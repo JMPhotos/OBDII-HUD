@@ -15,7 +15,7 @@ Reading the RPM data is just as easy using the "word()" function:
 
 Address (byte)  Length  Contents  			Expected Value
 --------------------------------------------------------------------------
-0               1       HUD Type  			Single digit 1-3
+0               1       HUD Type  			49, 50, or 51
 1		2	Engine Redline			4-digit RPM
 
 10		2	HUD1 Shift Point		4-digit RPM
