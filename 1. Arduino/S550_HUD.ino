@@ -134,65 +134,62 @@ void setup() {
     APPLICATION MAIN LOOP
     -----------------------------------------------------------------------*/
 void loop() {
-
-  int start;
   
   // Check for incoming characters from Bluefruit
   ble.println("AT+BLEUARTRX");
   ble.readline();
   
+  // If we have data from the BLE module, read it, otherwise operate the HUD
   if (strcmp(ble.buffer, "OK") != 0) {
     ReadData(String(ble.buffer));
   }
   else{
-      if (TESTMODE) {
-    TestHUD();     
-  }else{                                          //RESET all LEDs to OFF
-    int RPM;
-    if (obd.readPID(PID_RPM, RPM))                //Read RPM and store it in the variable "RPM"
-    {
-        switch (HUD_Type) {
-          case 49:
-            HUD_1(RPM);
-          break;
-          case 50:
-            HUD_2(RPM);
-          break;
-          case 51:
-            HUD_3(RPM);
-          break;
-        }
-    }
-  }
-  
-
+      if (TESTMODE) {                                   //If we're in Test Mode, Test the HUD
+          TestHUD();
+      }else{                                            //Normal Operations
+          int RPM;
+          if (obd.readPID(PID_RPM, RPM))                //Read RPM and store it in the variable "RPM"
+          {
+            switch (HUD_Type) {
+                case 49:
+                    HUD_1(RPM);                         //Tachometer Mode
+                break;
+                case 50:
+                    HUD_2(RPM);                         //Track Mode
+                break;
+                case 51:
+                    HUD_3(RPM);                         //Drag Mode
+                break;
+            }
+          }
+      }
   }
 }
 /*=========================================================================*/
 
 void TestHUD()
 {
-  Configure_HUD();
+  Configure_HUD();                                      //Reconfigure the HUD to the new values
 
-  if (testRPM>649)
+  if (testRPM>649)                                      //Cycle through the RPM range, from 650-6500, at 50 RPM intervals
   {
      if (!ascent)
      {
-       testRPM = testRPM - 75;
+       testRPM = testRPM - 50;
      }else
      {
-       testRPM = testRPM +50;
+       testRPM = testRPM + 50;
        if(testRPM >=REDLINE)
        {
         ascent = false;
        }
      }
   }else{
-    TESTMODE = false;
+    TESTMODE = false;                                   //Stop and reset once if the testRPM counter goes below 650
     testRPM = 650;
   }
   
- switch (HUD_Type) {
+ switch (HUD_Type) {                                    //Operate the HUD using the test RPMvalue
     case 49:
       HUD_1(testRPM);
     break;
@@ -207,59 +204,53 @@ void TestHUD()
 
 void Configure_HUD()
 {
-  HUD_Type = EEPROM.read(0);
-  REDLINE = word(EEPROM.read(1), EEPROM.read(2));
+  HUD_Type = EEPROM.read(0);                            //Set the HUD type
+  REDLINE = word(EEPROM.read(1), EEPROM.read(2));       //Set the Redline
   
   switch (HUD_Type) {
-    case 49:    
-      RPM_interval = (REDLINE - 1000)/22;
-      SHIFT = word(EEPROM.read(10), EEPROM.read(11));
+    case 49:                                            //Tachometer Mode
+      RPM_interval = (REDLINE - 1000)/22;               //Set the interval between sequential LEDs
+      SHIFT = word(EEPROM.read(10), EEPROM.read(11));   //Set the mode's shift point
       break;
-    case 50:     
-      RPM_interval = (SHIFT - (SHIFT/2))/10;
-      SHIFT = word(EEPROM.read(20), EEPROM.read(21));
+    case 50:                                            //Track Mode
+      RPM_interval = (SHIFT - (SHIFT/2))/10;            //Set the interval between sequential LEDs
+      SHIFT = word(EEPROM.read(20), EEPROM.read(21));   //Set the mode's shift point
       break;
-    case 51:
-      SHIFT = word(EEPROM.read(40), EEPROM.read(41));
+    case 51:                                            //Drag Mode
+      SHIFT = word(EEPROM.read(40), EEPROM.read(41));   //Set the mode's shift point
       break;
   }
-  isConfigured = true;
 }
 
 void ReadData(String str)
 {
-    // Some data was found, its in the buffer
-  int start = str.indexOf("HUD=");
+  int start = str.indexOf("HUD=");                      //Find the HUD Type
   if(start >= 0)
   {
-    if(isDigit(str.charAt(start + 4))){
+    if(isDigit(str.charAt(start + 4))){                 
       byte HUD_type = str.charAt(start + 4);
-      Serial.println("A");
       EEPROM.update(0,HUD_type);
-      isConfigured = false;
     }
   }
-  start = str.indexOf("REDLINE=");
+  start = str.indexOf("REDLINE=");                      //Find the REDLINE
   if(start >= 0)
   {
     if(isDigit(str.charAt(start + 8))){
       int redline = str.substring(start + 8).toInt();
       EEPROM.update(1, highByte(redline));
       EEPROM.update(2, lowByte(redline));
-      isConfigured = false;
     }
   }
-  start = str.indexOf("H1S=");
+  start = str.indexOf("H1S=");                          //Find the HUD1 Shift Point
   if(start >= 0)
   {
     if(isDigit(str.charAt(start + 4))){
       int shiftpoint = str.substring(start + 4,start + 8).toInt();      
       EEPROM.update(10, highByte(shiftpoint));
       EEPROM.update(11, lowByte(shiftpoint));
-      isConfigured = false;
     }
   }
-  start = str.indexOf("H1C1=");
+  start = str.indexOf("H1C1=");                         //Find the 1st HUD1 Color
   if(start >= 0)
   {
     if(isDigit(str.charAt(start + 5))){
@@ -269,10 +260,9 @@ void ReadData(String str)
       EEPROM.update(12,r);
       EEPROM.update(13,g);
       EEPROM.update(14,b);
-      isConfigured = false;
     }
   }
-  start = str.indexOf("H1C2=");
+  start = str.indexOf("H1C2=");                         //Find the 2nd HUD1 Color
   if(start >= 0)
   {
     if(isDigit(str.charAt(start + 5))){
@@ -282,20 +272,18 @@ void ReadData(String str)
       EEPROM.update(15,r);
       EEPROM.update(16,g);
       EEPROM.update(17,b);
-      isConfigured = false;
     }
   }
-  start = str.indexOf("H2S=");
+  start = str.indexOf("H2S=");                          //Find the HUD2 Shift Point
   if(start >= 0)
   { 
     if(isDigit(str.charAt(start + 4))){
       int shiftpoint = str.substring(start + 4,start + 8).toInt();  
       EEPROM.update(20, highByte(shiftpoint));
       EEPROM.update(21, lowByte(shiftpoint));
-      isConfigured = false;
     }
   }
-  start = str.indexOf("H2C1=");
+  start = str.indexOf("H2C1=");                         //Find the 1st HUD2 Color
   if(start >= 0)
   {
     if(isDigit(str.charAt(start + 5))){
@@ -304,11 +292,10 @@ void ReadData(String str)
       int b = str.substring(start + 11,start + 14).toInt();
       EEPROM.update(22,r);
       EEPROM.update(23,g);
-      EEPROM.update(24,b);isConfigured = false;
-      isConfigured = false;
+      EEPROM.update(24,b);
     }
   }
-  start = str.indexOf("H2C2=");
+  start = str.indexOf("H2C2=");                         //Find the 2nd HUD2 Color
   if(start >= 0)
   {
     if(isDigit(str.charAt(start + 5))){
@@ -318,10 +305,9 @@ void ReadData(String str)
       EEPROM.update(25,r);
       EEPROM.update(26,g);
       EEPROM.update(27,b);
-      isConfigured = false;
     }
   }
-  start = str.indexOf("H2C3=");
+  start = str.indexOf("H2C3=");                         //Find the 3rd HUD2 Color
   if(start >= 0)
   {
     if(isDigit(str.charAt(start + 5))){
@@ -331,20 +317,18 @@ void ReadData(String str)
       EEPROM.update(28,r);
       EEPROM.update(29,g);
       EEPROM.update(30,b);
-      isConfigured = false;
     }
   }  
-  start = str.indexOf("H3S=");
+  start = str.indexOf("H3S=");                          //Find the HUD3 Shift Point
   if(start >= 0)
   {
     if(isDigit(str.charAt(start + 4))){
       int shiftpoint = str.substring(start + 4,start + 8).toInt();      
       EEPROM.update(40, highByte(shiftpoint));
       EEPROM.update(41, lowByte(shiftpoint));
-      isConfigured = false;
     }
   }
-  start = str.indexOf("HUD3_CLR1=");
+  start = str.indexOf("HUD3_CLR1=");                    //Find the HUD3 Color
   if(start >= 0)
   {
     if(isDigit(str.charAt(start + 5))){
@@ -354,16 +338,15 @@ void ReadData(String str)
       EEPROM.update(42,r);
       EEPROM.update(43,g);
       EEPROM.update(44,b);
-      isConfigured = false;
     }
   }
-  start = str.indexOf("STARTTEST");
+  start = str.indexOf("STARTTEST");                     //Find the command to enter Test Mode
   if(start >= 0)
   {
     TESTMODE=true;
     ascent=true;
-  }
-  start = str.indexOf("CONNECTED");
+  } 
+  start = str.indexOf("CONNECTED");                     //Find the command to send Configuration Data over BLE
   if(start >= 0)
   {
     ble.print("AT+BLEUARTTX=");
@@ -415,8 +398,8 @@ void ReadData(String str)
 
 void HUD_1(int RPM)
 {
-  int underShift = floor((SHIFT-1000)/RPM_interval)+1;
-  int LEDs_lit = RPM>1000 ? floor((RPM-1000)/RPM_interval)+1 : 0;
+  int underShift = floor((SHIFT-1000)/RPM_interval)+1;                  //Find the LEDs to be lit below the Shift point
+  int LEDs_lit = RPM>1000 ? floor((RPM-1000)/RPM_interval)+1 : 0;       //Find the total number of LEDs to be lit
   if (LEDs_lit>=0)
   {
     strip.clear();
@@ -437,8 +420,6 @@ void HUD_1(int RPM)
 
 void HUD_2(int RPM)
 {   
-    
-    SHIFT = word(EEPROM.read(20), EEPROM.read(21));
     strip.clear();
     if(RPM>=SHIFT/2+RPM_interval*10)
     {
@@ -487,7 +468,7 @@ void HUD_2(int RPM)
     strip.show();
 }
 
-void HUD_3(int RPM)
+void HUD_3(int RPM)                         
 {
     if (RPM>=SHIFT)
     {
