@@ -3,7 +3,7 @@
 These files contribute the code to making the Arduino microcontroller work. 
 
 # FILE DESCRIPTIONS
- **1. _EEPROM Memory Addressing_** - Listing of data stored to Arduino's memory
+ **1. _EEPROM Memory Addressing_** - Listing of data stored to Arduino's memory. Just a cheatsheet used for understanding how the memory storage works.
  
  **2. _BluefruitConfig.h_** - Configuration data for the Adafruit BLE Shield
  
