@@ -35,7 +35,9 @@
       SHIFT           Selected Shift Point RPM
       RPM             Global Variable to hold RPM
       RPM_interval    Number of revs between illuminating two LEDs
-      testMode        Bool
+      TESTMODE        Boolean used to loop through LED display once
+      testRPM         Placeholder used for TestMode simulated Engine RPMs
+      ascent          Boolean to control ascending or decending RPMs during TestMode
       
     -----------------------------------------------------------------------*/
 int HUD_Type;
@@ -45,7 +47,6 @@ int SHIFT;
 bool TESTMODE = false;
 int testRPM;
 bool ascent = true;
-bool isConfigured = false;
 
 /*=========================================================================*/
 
@@ -60,7 +61,7 @@ bool isConfigured = false;
                                     "HWUART"  or "SPI"  or "MANUAL"                             
     -----------------------------------------------------------------------*/
 #define MINIMUM_FIRMWARE_VERSION    "0.6.6"
-#define MODE_LED_BEHAVIOUR          "MODE"
+#define MODE_LED_BEHAVIOUR          "SPI"
 Adafruit_BluefruitLE_SPI ble(BLUEFRUIT_SPI_CS, BLUEFRUIT_SPI_IRQ, BLUEFRUIT_SPI_RST);
 /*=========================================================================*/
 
@@ -90,7 +91,6 @@ COBD obd;
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 /*=========================================================================*/
 
-
 /*=========================================================================
     APPLICATION SETUP
     -----------------------------------------------------------------------*/
@@ -104,7 +104,7 @@ void setup() {
 /* Bluetooth */
   if (!ble.begin() )       // INITIALIZE BLE module            (REQUIRED)
   {
-    
+      //Could do some error checking here...I'm ignoring it.
   }
 
   ble.echo(false);         // DISABLE command echo from Bluefruit
@@ -119,13 +119,10 @@ void setup() {
   obd.begin();            // INITIALIZE OBDII module          (REQUIRED)
   while (!obd.init());    // Wait for OBD Plug configuration  (REQUIRED)
 
-
-
 /* Read EEPROM and Configure HUD */
   Configure_HUD();
   testRPM = 650;
 }
-
 
 /*=========================================================================*/
 
@@ -139,30 +136,32 @@ void loop() {
   ble.println("AT+BLEUARTRX");
   ble.readline();
   
-  // If we have data from the BLE module, read it, otherwise operate the HUD
-  if (strcmp(ble.buffer, "OK") != 0) {
-    ReadData(String(ble.buffer));
-  }
-  else{
-      if (TESTMODE) {                                   //If we're in Test Mode, Test the HUD
-          TestHUD();
-      }else{                                            //Normal Operations
-          int RPM;
-          if (obd.readPID(PID_RPM, RPM))                //Read RPM and store it in the variable "RPM"
-          {
-            switch (HUD_Type) {
-                case 49:
-                    HUD_1(RPM);                         //Tachometer Mode
-                break;
-                case 50:
-                    HUD_2(RPM);                         //Track Mode
-                break;
-                case 51:
-                    HUD_3(RPM);                         //Drag Mode
-                break;
-            }
-          }
+  // If we have data from the BLE module, read it, otherwise operate the HUD.
+  // By default, when there's no BLE data, the readline function above returns "OK"
+  // NOTE that the strcmp function operates counterintuitively, i.e: if the left
+  // and right sides are the same, it returns 0. 
+  if (strcmp(ble.buffer, "OK") == 0) {
+    if (TESTMODE) {
+        TestHUD();                                  //Test the LED pattern
+    }else{    
+      int RPM;
+      if (obd.readPID(PID_RPM, RPM))                //Read RPM and store it in the variable "RPM"
+      {
+        switch (HUD_Type) {                         
+          case 49:                                  //Tach Mode
+            HUD_1(RPM);
+         break;
+          case 50:                                  //Track Mode
+            HUD_2(RPM);
+          break;
+          case 51:                                  //Drag Mode
+            HUD_3(RPM);
+          break;
+        }
       }
+    }
+  }else{
+    ReadData(ble.buffer);                            //Parse the incoming data string
   }
 }
 /*=========================================================================*/
@@ -173,13 +172,13 @@ void TestHUD()
 
   if (testRPM>649)                                      //Cycle through the RPM range, from 650-6500, at 50 RPM intervals
   {
-     if (!ascent)
+     if (!ascent)                                       
      {
-       testRPM = testRPM - 50;
+       testRPM = testRPM - 50;                          //Decrease the RPM
      }else
      {
-       testRPM = testRPM + 50;
-       if(testRPM >=REDLINE)
+       testRPM = testRPM + 50;                          //Increase the RPM
+       if(testRPM >=REDLINE)                            //Until we reach the Redline
        {
         ascent = false;
        }
@@ -190,14 +189,14 @@ void TestHUD()
   }
   
  switch (HUD_Type) {                                    //Operate the HUD using the test RPMvalue
-    case 49:
+    case 49:                                            //Tach Mode
       HUD_1(testRPM);
     break;
-    case 50:
+    case 50:                                            //Track Mode
       HUD_2(testRPM);
     break;
     case 51:
-      HUD_3(testRPM);
+      HUD_3(testRPM);                                   //Drag Mode
     break;
   }
 }
@@ -213,7 +212,7 @@ void Configure_HUD()
       SHIFT = word(EEPROM.read(10), EEPROM.read(11));   //Set the mode's shift point
       break;
     case 50:                                            //Track Mode
-      RPM_interval = (SHIFT - (SHIFT/2))/10;            //Set the interval between sequential LEDs
+      RPM_interval = (SHIFT - (SHIFT/2))/9;            //Set the interval between sequential LEDs
       SHIFT = word(EEPROM.read(20), EEPROM.read(21));   //Set the mode's shift point
       break;
     case 51:                                            //Drag Mode
@@ -232,7 +231,7 @@ void ReadData(String str)
       EEPROM.update(0,HUD_type);
     }
   }
-  start = str.indexOf("REDLINE=");                      //Find the REDLINE
+  start = str.indexOf("REDLINE=");                      //Find the REDLINE (not configured in iOS app)
   if(start >= 0)
   {
     if(isDigit(str.charAt(start + 8))){
@@ -348,51 +347,51 @@ void ReadData(String str)
   } 
   start = str.indexOf("CONNECTED");                     //Find the command to send Configuration Data over BLE
   if(start >= 0)
-  {
-    ble.print("AT+BLEUARTTX=");
-    ble.print(word(EEPROM.read(10),EEPROM.read(11)));
+  {                         //Color 1 - Red
+    ble.print("AT+BLEUARTTX=");                         //Send the HUD 1 Config
+    ble.print(word(EEPROM.read(10),EEPROM.read(11)));   //Shift Point
     ble.print("-");
-    ble.print(EEPROM.read(12));
+    ble.print(EEPROM.read(12));                         //Color 1 - Red
     ble.print("-");
-    ble.print(EEPROM.read(13));
+    ble.print(EEPROM.read(13));                         //Color 1 - Green
     ble.print("-");
-    ble.print(EEPROM.read(14));
+    ble.print(EEPROM.read(14));                         //Color 1 - Blue
     ble.print("-");
-    ble.print(EEPROM.read(15));
+    ble.print(EEPROM.read(15));                         //Color 2 - Red
     ble.print("-");
-    ble.print(EEPROM.read(16));
+    ble.print(EEPROM.read(16));                         //Color 2 - Green
     ble.print("-");
-    ble.print(EEPROM.read(17));
+    ble.print(EEPROM.read(17));                         //Color 2 - Blue
     ble.println("-");
-    ble.print("AT+BLEUARTTX=");
-    ble.print(word(EEPROM.read(20),EEPROM.read(21)));
+    ble.print("AT+BLEUARTTX=");                         //Send the HUD 2 Data
+    ble.print(word(EEPROM.read(20),EEPROM.read(21)));   //Shift Point
     ble.print("-");
-    ble.print(EEPROM.read(22));
+    ble.print(EEPROM.read(22));                         //Color 1 - Red
     ble.print("-");
-    ble.print(EEPROM.read(23));
+    ble.print(EEPROM.read(23));                         //Color 1 - Green
     ble.print("-");
-    ble.print(EEPROM.read(24));
+    ble.print(EEPROM.read(24));                         //Color 1 - Blue
     ble.print("-");
-    ble.print(EEPROM.read(25));
+    ble.print(EEPROM.read(25));                         //Color 2 - Red
     ble.print("-");
-    ble.print(EEPROM.read(26));
+    ble.print(EEPROM.read(26));                         //Color 2 - Green
     ble.print("-");
-    ble.print(EEPROM.read(27));
+    ble.print(EEPROM.read(27));                         //Color 2 - Blue
     ble.print("-");
-    ble.print(EEPROM.read(28));
+    ble.print(EEPROM.read(28));                         //Color 3 - Red
     ble.print("-");
-    ble.print(EEPROM.read(29));
+    ble.print(EEPROM.read(29));                         //Color 3 - Green
     ble.print("-");
-    ble.print(EEPROM.read(30));
+    ble.print(EEPROM.read(30));                         //Color 3 - Blue
     ble.println("-");
-    ble.print("AT+BLEUARTTX=");
-    ble.print(word(EEPROM.read(40),EEPROM.read(41)));
+    ble.print("AT+BLEUARTTX=");                         //Send the HUD 3 Data
+    ble.print(word(EEPROM.read(40),EEPROM.read(41)));   //Shift Point
     ble.print("-");
-    ble.print(EEPROM.read(42));
+    ble.print(EEPROM.read(42));                         //Color 1 - Red
     ble.print("-");
-    ble.print(EEPROM.read(43));
+    ble.print(EEPROM.read(43));                         //Color 1 - Green
     ble.print("-");
-    ble.println(EEPROM.read(44));
+    ble.println(EEPROM.read(44));                       //Color 1 - Blue
   }
 }
 
@@ -405,11 +404,11 @@ void HUD_1(int RPM)
     strip.clear();
     for(uint8_t i = 0; i<LEDs_lit; i++)
     {  
-      if(i<underShift)
+      if(i<underShift)      //If this is an LED before the ShiftPoint, set the color to Color 1
       {
         strip.setPixelColor(i,strip.Color(EEPROM.read(12),EEPROM.read(13),EEPROM.read(14)));
       }
-      else
+      else                  //This is an LED after the shift point, so set the color to Color 2
       {
         strip.setPixelColor(i,strip.Color(EEPROM.read(15),EEPROM.read(16),EEPROM.read(17)));
       }
@@ -421,47 +420,43 @@ void HUD_1(int RPM)
 void HUD_2(int RPM)
 {   
     strip.clear();
-    if(RPM>=SHIFT/2+RPM_interval*10)
+    if(RPM>=SHIFT/2+RPM_interval*9)             //Fill all LEDs with Color 3
     {
-      strip.fill(strip.Color(EEPROM.read(28),EEPROM.read(29),EEPROM.read(30)));
-    }else if(RPM>=SHIFT/2+RPM_interval*9)
-    {
-      strip.fill(strip.Color(EEPROM.read(28),EEPROM.read(29),EEPROM.read(30)),0,11);
-      strip.fill(strip.Color(EEPROM.read(28),EEPROM.read(29),EEPROM.read(30)),12);
+       strip.fill(strip.Color(EEPROM.read(28),EEPROM.read(29),EEPROM.read(30)));
     }else if(RPM>=SHIFT/2+RPM_interval*8)
-    {
+    {                                           //Fill all but the middle 3 LEDs with Color 3
       strip.fill(strip.Color(EEPROM.read(28),EEPROM.read(29),EEPROM.read(30)),0,10);
       strip.fill(strip.Color(EEPROM.read(28),EEPROM.read(29),EEPROM.read(30)),13);
     }else if(RPM>=SHIFT/2+RPM_interval*7)
-    {
+    {                                           //Fill the outside 9 LEDs on both sides with Color 2
       strip.fill(strip.Color(EEPROM.read(25),EEPROM.read(26),EEPROM.read(27)),0,9);
       strip.fill(strip.Color(EEPROM.read(25),EEPROM.read(26),EEPROM.read(27)),14);
     }else if(RPM>SHIFT/2+RPM_interval*6)
-    {
+    {                                           //Fill the outside 8 LEDs on both sides with Color 2
       strip.fill(strip.Color(EEPROM.read(25),EEPROM.read(26),EEPROM.read(27)),0,8);
       strip.fill(strip.Color(EEPROM.read(25),EEPROM.read(26),EEPROM.read(27)),15);
     }else if(RPM>SHIFT/2+RPM_interval*5)
-    {
+    {                                           //Fill the outside 7 LEDs on both sides with Color 2
       strip.fill(strip.Color(EEPROM.read(25),EEPROM.read(26),EEPROM.read(27)),0,7);
       strip.fill(strip.Color(EEPROM.read(25),EEPROM.read(26),EEPROM.read(27)),16);
     }else if(RPM>SHIFT/2+RPM_interval*4)
-    {
+    {                                           //Fill the outside 6 LEDs on both sides with Color 1
       strip.fill(strip.Color(EEPROM.read(22),EEPROM.read(23),EEPROM.read(24)),0,6);
       strip.fill(strip.Color(EEPROM.read(22),EEPROM.read(23),EEPROM.read(24)),17);
     }else if(RPM>SHIFT/2+RPM_interval*3)
-    {
+    {                                           //Fill the outside 5 LEDs on both sides with Color 1
       strip.fill(strip.Color(EEPROM.read(22),EEPROM.read(23),EEPROM.read(24)),0,5);
       strip.fill(strip.Color(EEPROM.read(22),EEPROM.read(23),EEPROM.read(24)),18);
     }else if(RPM>SHIFT/2+RPM_interval*2)
-    { 
+    {                                           //Fill the outside 4 LEDs on both sides with Color 1
       strip.fill(strip.Color(EEPROM.read(22),EEPROM.read(23),EEPROM.read(24)),0,4);
       strip.fill(strip.Color(EEPROM.read(22),EEPROM.read(23),EEPROM.read(24)),19);
     }else if(RPM>SHIFT/2+RPM_interval)
-    {
+    {                                           //Fill the outside 3 LEDs on both sides with Color 1
       strip.fill(strip.Color(EEPROM.read(22),EEPROM.read(23),EEPROM.read(24)),0,3);
       strip.fill(strip.Color(EEPROM.read(22),EEPROM.read(23),EEPROM.read(24)),20);
     }else if(RPM>REDLINE/2)
-    {
+    {                                           //Fill the outside 2 LEDs on both sides with Color 1
       strip.fill(strip.Color(EEPROM.read(22),EEPROM.read(23),EEPROM.read(24)),0,2);
       strip.fill(strip.Color(EEPROM.read(22),EEPROM.read(23),EEPROM.read(24)),21);
     }
@@ -470,11 +465,13 @@ void HUD_2(int RPM)
 
 void HUD_3(int RPM)                         
 {
-    if (RPM>=SHIFT)
-    {
+    if (RPM>=SHIFT)                                      //If the RPM is at/above the Shift Point
+    {                                                    //Set the entire strip to the stored color
+      strip.clear();                                    
       strip.fill(strip.Color(EEPROM.read(42),EEPROM.read(43),EEPROM.read(44)));
       strip.show();
-    }else{
-      strip.clear();
+    }else{                                               //Otherwise, clear the strip
+      strip.clear();        
+      strip.show();
     }
 }
