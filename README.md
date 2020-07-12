@@ -19,4 +19,4 @@ This project was created to provide a Shelby GT350-styled shift light to the sta
 ### Folder Descriptions
 
 1. Arduino - Contains the source code for the Arduino microcontroller. Includes hard-coded versions that don't require the iOS app 
-2. iOS - Contains the source code for the iOS app. Since I don't want to spend the $100 per year to publish the application on Apple's App Store, this app will only be distributed via source code. You'll need a Mac computer with XCode in order to compile it and run it on your device.
+2. iOS - ~~Contains the source code for the iOS app.~~ **TO BE ADDED** Since I don't want to spend the $100 per year to publish the application on Apple's App Store, this app will only be distributed via source code. You'll need a Mac computer with XCode in order to compile it and run it on your device. 
